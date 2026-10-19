@@ -18,7 +18,11 @@ const config = {
   },
   coverageAnalysis: "perTest",
   thresholds: { break: null },
-  ignorePatterns: ["/.cache/rea-command-locks/**", "/coverage/**"],
+  ignorePatterns: [
+    "/.cache/rea-command-locks/**",
+    "/coverage/**",
+    "/.cursor/**",
+  ],
   concurrency: 2,
   timeoutMS: 30000,
   reporters: ["clear-text", "progress", "html", "json"],
