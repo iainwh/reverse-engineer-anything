@@ -1018,10 +1018,10 @@ describe("bounded Interface Builder archive decoding", () => {
     const bundle = join(root, "Example.app");
     const resources = join(bundle, "Contents", "Resources");
     await mkdir(resources, { recursive: true });
-    // plutil writes years past 9999 unsigned, which the decoder rejects.
+    // Year 11507 is a UTC field plutil accepts; 275761 exceeds the Date range.
     await writeFile(
       join(resources, "Far.nib"),
-      '<?xml version="1.0"?><plist version="1.0"><dict><key>$archiver</key><string>NSKeyedArchiver</string><key>$objects</key><array><string>$null</string><date>11507-08-17T05:20:00Z</date></array><key>$top</key><dict/></dict></plist>',
+      '<?xml version="1.0"?><plist version="1.0"><dict><key>$archiver</key><string>NSKeyedArchiver</string><key>$objects</key><array><string>$null</string><date>11507-08-17T05:20:00Z</date><date>275761-01-01T00:00:00Z</date></array><key>$top</key><dict/></dict></plist>',
     );
 
     const result = await analyzeInterfaceBuilderBundle({
@@ -1030,11 +1030,13 @@ describe("bounded Interface Builder archive decoding", () => {
     });
 
     expect(result.documents).toHaveLength(1);
-    expect(result.limitations).toContainEqual(
+    expect(
+      result.limitations.filter((note) => note.startsWith("Contents/")),
+    ).toEqual([
       expect.stringMatching(
-        /^Contents\/Resources\/Far\.nib: 1 date value\(s\)/u,
+        /^Contents\/Resources\/Far\.nib: 1 XML scalar value\(s\)/u,
       ),
-    );
+    ]);
     expect(result.limitations).not.toContainEqual(
       expect.stringContaining("could not be decoded"),
     );

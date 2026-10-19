@@ -12,15 +12,27 @@ import { createTestTempDirectory } from "./temporaryDirectory.js";
 const EXACT_INTEGER = { $plist_type: "integer", decimal: "9007199254740993" };
 const ROUNDED = 9007199254740992;
 
-/** Accepted decoder representations whose supplemental metadata needs care. */
-export const mixedArchiveNumberElements = [
-  "<integer>9007199254740992<!-- split -->3</integer>",
-  "<integer>9007199254740992<![CDATA[3]]></integer>",
-  "<integer><![CDATA[9007199254740992]]>3</integer>",
-  "<integer><![CDATA[9007199254740992&#51;]]></integer>",
-  "<integer>9007199254740992<?rea split?>3</integer>",
-  "<integer>9007199254740992<string>3</string></integer>",
-  "<integer>9007199254740992x</integer>",
+/**
+ * `<integer>` content CF scans as raw characters: markup and entity references
+ * are not numeric text, so the decoder retains the literal as an explicit
+ * unknown instead of guessing from a numeric prefix.
+ */
+const unknownInteger = (literal: string) => ({
+  $plist_type: "unknown",
+  element: "integer",
+  literal,
+  reason: literal.includes("<") ? "unsupported-markup" : "invalid-literal",
+});
+
+/** Integer literals whose exact text is retained because no value is established. */
+const mixedArchiveNumberLiterals = [
+  "9007199254740992<!-- split -->3",
+  "9007199254740992<![CDATA[3]]>",
+  "<![CDATA[9007199254740992]]>3",
+  "<![CDATA[9007199254740992&#51;]]>",
+  "9007199254740992<?rea split?>3",
+  "9007199254740992<string>3</string>",
+  "9007199254740992x",
 ] as const;
 
 /** Ordinary dictionaries and malformed numeric references at the same boundary. */
@@ -39,15 +51,17 @@ export const archiveNumberMetadataCases = [
     source: { first: "__INTEGER__", other: "__OTHER__" },
     element,
     expected: { first: EXACT_INTEGER, other: value },
-    incomplete: false,
+    unknownScalars: 0,
+    exactIntegers: 1,
     malformedReference: false,
   })),
-  ...mixedArchiveNumberElements.map((element) => ({
-    name: element,
+  ...mixedArchiveNumberLiterals.map((literal) => ({
+    name: `<integer>${literal}</integer>`,
     source: { first: "__INTEGER__", other: "__OTHER__" },
-    element,
-    expected: { first: ROUNDED, other: ROUNDED },
-    incomplete: true,
+    element: `<integer>${literal}</integer>`,
+    expected: { first: EXACT_INTEGER, other: unknownInteger(literal) },
+    unknownScalars: 1,
+    exactIntegers: 1,
     malformedReference: false,
   })),
   ...(["UID", "CF$UID"] as const).flatMap((key) => [
@@ -56,7 +70,8 @@ export const archiveNumberMetadataCases = [
       source: { [key]: { amount: "__INTEGER__" } },
       element: "",
       expected: { [key]: { amount: EXACT_INTEGER } },
-      incomplete: false,
+      unknownScalars: 0,
+      exactIntegers: 1,
       malformedReference: false,
     },
     {
@@ -64,7 +79,8 @@ export const archiveNumberMetadataCases = [
       source: { [key]: ["__INTEGER__"] },
       element: "",
       expected: { [key]: [EXACT_INTEGER] },
-      incomplete: false,
+      unknownScalars: 0,
+      exactIntegers: 1,
       malformedReference: false,
     },
     {
@@ -72,7 +88,8 @@ export const archiveNumberMetadataCases = [
       source: { [key]: "__INTEGER__" },
       element: "",
       expected: { [key]: ROUNDED },
-      incomplete: false,
+      unknownScalars: 0,
+      exactIntegers: 0,
       malformedReference: true,
     },
   ]),
@@ -80,8 +97,9 @@ export const archiveNumberMetadataCases = [
     name: "entity-encoded integer text",
     source: { amount: "__INTEGER__" },
     element: "",
-    expected: { amount: EXACT_INTEGER },
-    incomplete: false,
+    expected: { amount: unknownInteger("&#57;007199254740993") },
+    unknownScalars: 1,
+    exactIntegers: 0,
     malformedReference: false,
     integerElement: "<integer>&#57;007199254740993</integer>",
   },
@@ -90,7 +108,10 @@ export const archiveNumberMetadataCases = [
   source: JsonValue;
   element: string;
   expected: JsonValue;
-  incomplete: boolean;
+  /** XML scalar literals retained as explicit unknowns. */
+  unknownScalars: number;
+  /** Integers beyond the safe range reported with exact decimal text. */
+  exactIntegers: number;
   malformedReference: boolean;
   integerElement?: string;
 }[];
@@ -123,7 +144,18 @@ export const keyedArchiveNumberMetadataFixture = async (item: MetadataCase) => {
   };
 };
 
-/** Require exact ordinary values and honest limitations for incomplete metadata. */
+const countedLimitations = (
+  limitations: readonly string[],
+  subject: string,
+  count: number,
+) => {
+  const notes = limitations.filter((note) => note.includes(subject));
+  expect(notes).toHaveLength(count === 0 ? 0 : 1);
+  for (const note of notes)
+    expect(note.startsWith(`${String(count)} ${subject}`), note).toBe(true);
+};
+
+/** Require exact ordinary values, explicit unknowns and honest limitation counts. */
 export const expectKeyedArchiveNumberMetadata = (
   value: unknown,
   item: MetadataCase,
@@ -145,14 +177,7 @@ export const expectKeyedArchiveNumberMetadata = (
     status: "resolved",
     raw: { CF$UID: 1 },
   });
-  if (item.incomplete) {
-    expect(result.limitations).toContainEqual(
-      expect.stringMatching(/metadata.*completely observed.*precision/u),
-    );
-    expect(
-      result.limitations.some((note) => note.includes("unambiguous integer")),
-    ).toBe(false);
-  } else if (item.malformedReference) {
+  if (item.malformedReference)
     expect(result.references).toContainEqual({
       source: 1,
       path: [],
@@ -160,10 +185,18 @@ export const expectKeyedArchiveNumberMetadata = (
       status: "malformed",
       raw: item.expected,
     });
-  } else {
-    expect(result.references).toHaveLength(1);
-    expect(result.limitations).toContainEqual(
-      expect.stringMatching(/^1 unambiguous integer value/u),
-    );
-  }
+  else expect(result.references).toHaveLength(1);
+  countedLimitations(
+    result.limitations,
+    "XML scalar value(s)",
+    item.unknownScalars,
+  );
+  countedLimitations(
+    result.limitations,
+    "unambiguous integer value(s)",
+    item.exactIntegers,
+  );
+  expect(result.limitations).not.toContainEqual(
+    expect.stringContaining("could not be completely observed"),
+  );
 };
