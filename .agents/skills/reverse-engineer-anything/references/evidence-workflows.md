@@ -69,3 +69,45 @@ When the connected schema advertises `include_query_parameter_names`, select
 it in the view for distinct observed names with original record ordinals. Query
 values are omitted; the names establish neither required parameters nor a
 complete server schema. Keep the original parent Evidence for exact URLs.
+
+## Page oversized and truncated results
+
+Return to [SKILL.md](../SKILL.md) for the summary-first rule. Use this section
+when a result is too large for the client or a retained parent ID is the next
+read.
+
+For a JavaScript application or ELF layout whose size is unknown or large,
+call `analyze_javascript_application` or `inspect_binary_layout` with
+`"detail": "summary"`, then inspect the retained `parent_evidence_id` with
+`inspect_analysis_view`. Page module identities and select the returned
+`node_id` before requesting an item; a single file path can represent several
+graph roles. Do not repeat an identical analysis or rejected call without a
+changed input or resolved blocker. Recheck session state when a lifecycle
+change makes that status useful. Make a focused follow-up only when the
+returned result leaves a specific question unanswered.
+
+If MCP reports `resource_constraint` with `details.resource: "transport"`, call
+`inspect_analysis_view` with its reported same-session Evidence reference for a
+summary, one section/module, or a stable page. Use `trace_application_feature`
+once a seed is known, or call `export_evidence_bundle` to write the complete
+session to a selected path. The analysis remains complete in the ledger; avoid
+repeating it merely to request the same oversized response. Complete CLI JSON
+output also streams without a single MCP frame.
+
+When the retained parent ID is unknown, use `get_evidence_bundle` with
+`detail: "summary"` and exact filters for operation, target SHA-256,
+analysis-profile digest or canonical procedure address. Select its returned
+Evidence ID for the next view instead of requesting the complete bundle.
+`retention: "complete-record"` means the whole record is stored; native
+value-flow truncation and unknown metadata remain separate. For an exported
+portable bundle, use `rea inspect-evidence-bundle` with JSON containing `path`,
+`detail: "summary"` and the same `filters`. Reading that file still requires
+validating its full contents within the local memory budget.
+
+A client can also truncate a successful tool result without a REA transport
+error. Treat that preview as incomplete; use the retained parent ID for smaller
+views or export when the full record is needed. Do not parse the preview as
+canonical JSON or repeat the producer. For JavaScript, read the
+[module-view and trace recipes](javascript-applications.md) before drilling
+into a large graph; a broad bidirectional trace can expand unrelated
+containment relationships even after summary analysis.
