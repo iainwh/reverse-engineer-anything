@@ -572,12 +572,14 @@ describe("canonical skill transaction", () => {
       "stale filesystem-write permission grant\n",
     );
     for (const reference of [
-      "connection-and-recovery.md",
-      "native-and-artifacts.md",
-      "javascript-applications.md",
       "android-applications.md",
-      "runtime-observation.md",
+      "connection-and-recovery.md",
       "evidence-workflows.md",
+      "investigation-plan.md",
+      "javascript-applications.md",
+      "native-and-artifacts.md",
+      "runtime-observation.md",
+      "target-routing.md",
     ]) {
       const installed = await readFile(
         join(dirname(destination), "references", reference),
@@ -631,9 +633,11 @@ describe("canonical skill transaction", () => {
       "references/android-applications.md",
       "references/connection-and-recovery.md",
       "references/evidence-workflows.md",
+      "references/investigation-plan.md",
       "references/javascript-applications.md",
       "references/native-and-artifacts.md",
       "references/runtime-observation.md",
+      "references/target-routing.md",
     ];
     const records = await Promise.all(
       paths.map(async (path) => {

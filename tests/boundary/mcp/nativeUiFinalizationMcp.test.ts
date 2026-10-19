@@ -4,6 +4,7 @@ import { Client, InMemoryTransport } from "@modelcontextprotocol/client";
 import { expect, it, vi } from "vitest";
 import { AnalysisCleanupLease } from "../../../src/artifacts/AnalysisCleanupLease.js";
 import * as runtimes from "../../../src/native/NativeUiHelperRuntime.js";
+import { NATIVE_UI_DEADLINE_MS } from "../../../src/native/NativeUiInterruptionControl.js";
 import { NativeMacOSProvider } from "../../../src/native/NativeMacOSProvider.js";
 import { createServer } from "../../../src/server/createServer.js";
 import { createTestBinarySession } from "../../fixtures/binarySession.js";
@@ -74,18 +75,25 @@ it.each([false, true])(
           accessibility: true,
         },
       });
+      // The owned runtime deadline is a provider timeout, not a caller cancellation.
       expect(parseMcpToolError(result)).toMatchObject({
         error: {
-          code: fails ? "cleanup_incomplete" : "cancelled",
+          code: fails ? "cleanup_incomplete" : "provider_timeout",
           details: {
-            cleanup: fails ? "incomplete" : "complete",
+            operation: "observe_native_ui",
             ...(fails
               ? {
+                  cleanup: "incomplete",
                   execution_failure: "execution_failure",
-                  diagnostics: { primary_error: { code: "cancelled" } },
+                  diagnostics: {
+                    primary_error: {
+                      code: "provider_timeout",
+                      details: { timeout_ms: NATIVE_UI_DEADLINE_MS },
+                    },
+                  },
                   resources: ["controlled-ui-runtime"],
                 }
-              : {}),
+              : { timeout_ms: NATIVE_UI_DEADLINE_MS }),
             partial_observation: {
               initial: snapshot,
               steps: [],
