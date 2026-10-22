@@ -17,6 +17,11 @@ import { assertCleanLinuxHopperRuntime } from "../../scripts/lib/clean-linux-hop
 import { completeVerifierRun } from "../../scripts/lib/verifier-run.mjs";
 import { cleanupOwnedProcessGroup } from "../../src/process/ProcessOwnership.js";
 import { createTestTempDirectory } from "../fixtures/temporaryDirectory.js";
+import {
+  readProcCmdlineFirstArg,
+  readProcessState,
+  readReparentCoordinates,
+} from "../support/process/linuxProcFixture.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -80,16 +85,10 @@ it
       await mkdir(processEntry);
       for (const name of ["cmdline", "comm", "exe"])
         await symlink(`/proc/${String(pid)}/${name}`, join(processEntry, name));
-      const { stdout: coordinates } = await execFileAsync("ps", [
-        "-p",
-        String(pid),
-        "-o",
-        "ppid=,pgid=",
-      ]);
-      const [currentParent, group] = coordinates
-        .trim()
-        .split(/\s+/u)
-        .map(Number);
+      const { currentParent, group } = await readReparentCoordinates(
+        pid,
+        parentPid,
+      );
       expect(currentParent).not.toBe(parentPid);
       expect(group).toBe(pid);
 
@@ -105,11 +104,7 @@ it
         ).toBe(false);
 
       if (alternateMode) {
-        const commandLine = await readFile(
-          `/proc/${String(pid)}/cmdline`,
-          "utf8",
-        );
-        expect(commandLine.split("\0")[0]).toBe(alternate);
+        expect(await readProcCmdlineFirstArg(pid)).toBe(alternate);
         await unlink(alternate);
       }
       await expect(
@@ -119,13 +114,7 @@ it
         ),
       ).rejects.toThrow("Clean Linux runner retained a Hopper demo process");
       // Observation must not terminate the fixture, even though it resembles Xvfb.
-      const { stdout: alive } = await execFileAsync("ps", [
-        "-p",
-        String(pid),
-        "-o",
-        "stat=",
-      ]);
-      expect(alive.trim()).not.toMatch(/^Z/u);
+      expect(await readProcessState(pid)).not.toMatch(/^Z/u);
     } finally {
       if (orphanPid !== undefined) {
         const cleanup = await cleanupOwnedProcessGroup({

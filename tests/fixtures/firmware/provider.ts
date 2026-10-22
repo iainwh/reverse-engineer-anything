@@ -1,12 +1,15 @@
+import { access, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { access, rm, writeFile } from "node:fs/promises";
 import { expect, onTestFinished } from "vitest";
 import { createFirmwareAnalysisProvider } from "../../../src/composition/firmware.js";
 import { FirmwareAnalysisService } from "../../../src/application/firmware/FirmwareAnalysisService.js";
 import { spawnOwnedProviderProcess } from "../../../src/process/ProviderProcess.js";
 import { cleanupOwnedProcessGroup } from "../../../src/process/ProcessOwnership.js";
 import { createTestTempDirectory } from "../temporaryDirectory.js";
+
+const fixtureDirectory = fileURLToPath(new URL(".", import.meta.url));
+const binwalkStubCommand = join(fixtureDirectory, "binwalk-stub.sh");
 
 /** Exercise real subprocess ownership with synthetic pinned producer representations. */
 export const firmwareFixture = async (mode = "normal", banner?: string) => {
@@ -23,14 +26,17 @@ export const firmwareFixture = async (mode = "normal", banner?: string) => {
   const provider = createFirmwareAnalysisProvider(
     {
       ...process.env,
-      REA_BINWALK_COMMAND: "/usr/bin/true",
+      REA_BINWALK_COMMAND: binwalkStubCommand,
       REA_UNBLOB_COMMAND: process.execPath,
     },
     async (options) => {
-      const start = options.arguments.indexOf("--") + 2;
-      const args = options.arguments.slice(start);
+      const dashIndex = options.arguments.indexOf("--");
+      const invokedCommand = options.arguments[dashIndex + 1];
+      const args = options.arguments.slice(dashIndex + 2);
       const engine =
-        options.arguments[start - 1]?.endsWith("/true") === true
+        invokedCommand === binwalkStubCommand ||
+        (typeof invokedCommand === "string" &&
+          invokedCommand.endsWith("/binwalk-stub.sh"))
           ? "binwalk"
           : "unblob";
       const spawned = await spawnOwnedProviderProcess({
