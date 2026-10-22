@@ -1,4 +1,4 @@
-import { mkdtemp, realpath } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -20,14 +20,24 @@ import { removeTestWorkspace } from "../support/workspace/workspaceFixture.js";
  */
 export const createTestTempDirectory = async (
   prefix: string,
+  options?: { baseDirectory?: string },
 ): Promise<string> => {
+  const parent = await realpath(options?.baseDirectory ?? tmpdir());
   const canonicalDirectory = await realpath(
-    await mkdtemp(
-      join(await realpath(tmpdir()), normalizeTestTemporaryPrefix(prefix)),
-    ),
+    await mkdtemp(join(parent, normalizeTestTemporaryPrefix(prefix))),
   );
   onTestFinished(async () => {
     await removeTestWorkspace(canonicalDirectory);
   });
   return canonicalDirectory;
+};
+
+const execSafeTempRoot = join(process.cwd(), ".cache", "exec-safe-temp");
+
+/** Host temp dirs may be mounted noexec; copied launchers must run from the workspace. */
+export const createExecSafeTestTempDirectory = async (
+  prefix: string,
+): Promise<string> => {
+  await mkdir(execSafeTempRoot, { recursive: true });
+  return createTestTempDirectory(prefix, { baseDirectory: execSafeTempRoot });
 };

@@ -16,7 +16,12 @@ import { expect, it } from "vitest";
 import { assertCleanLinuxHopperRuntime } from "../../scripts/lib/clean-linux-hopper-runtime.mjs";
 import { completeVerifierRun } from "../../scripts/lib/verifier-run.mjs";
 import { cleanupOwnedProcessGroup } from "../../src/process/ProcessOwnership.js";
-import { createTestTempDirectory } from "../fixtures/temporaryDirectory.js";
+import { createExecSafeTestTempDirectory } from "../fixtures/temporaryDirectory.js";
+import {
+  readProcCmdlineFirstArg,
+  readProcessState,
+  readReparentCoordinates,
+} from "../support/process/linuxProcFixture.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -28,14 +33,16 @@ it
     const runId = randomUUID();
     const childCode =
       "process.title = 'Xvfb'; setInterval(() => {}, 1000); process.send('ready');";
-    const directory = await createTestTempDirectory("rea-clean-runtime-test-");
+    const directory = await createExecSafeTestTempDirectory(
+      "rea-clean-runtime-test-",
+    );
     const launcher = join(directory, "Hopper");
     const alternate = join(directory, "Hopper-alternate");
     const procRoot = join(directory, "proc");
     await mkdir(procRoot);
     const alternateMode = mode === "alternate launcher";
     if (alternateMode) {
-      await copyFile("/usr/bin/sleep", launcher);
+      await copyFile(process.execPath, launcher);
       await chmod(launcher, 0o700);
       await symlink(launcher, alternate);
     }
@@ -49,7 +56,9 @@ it
       procRoot,
     );
     const command = alternateMode ? alternate : process.execPath;
-    const arguments_ = alternateMode ? ["30"] : ["-e", childCode];
+    const arguments_ = alternateMode
+      ? ["-e", "setInterval(() => {}, 1000);"]
+      : ["-e", childCode];
     const parentCode = `
       const { spawn } = require('node:child_process');
       const child = spawn(${JSON.stringify(command)}, ${JSON.stringify(arguments_)}, {
@@ -80,16 +89,10 @@ it
       await mkdir(processEntry);
       for (const name of ["cmdline", "comm", "exe"])
         await symlink(`/proc/${String(pid)}/${name}`, join(processEntry, name));
-      const { stdout: coordinates } = await execFileAsync("ps", [
-        "-p",
-        String(pid),
-        "-o",
-        "ppid=,pgid=",
-      ]);
-      const [currentParent, group] = coordinates
-        .trim()
-        .split(/\s+/u)
-        .map(Number);
+      const { currentParent, group } = await readReparentCoordinates(
+        pid,
+        parentPid,
+      );
       expect(currentParent).not.toBe(parentPid);
       expect(group).toBe(pid);
 
@@ -105,11 +108,7 @@ it
         ).toBe(false);
 
       if (alternateMode) {
-        const commandLine = await readFile(
-          `/proc/${String(pid)}/cmdline`,
-          "utf8",
-        );
-        expect(commandLine.split("\0")[0]).toBe(alternate);
+        expect(await readProcCmdlineFirstArg(pid)).toBe(alternate);
         await unlink(alternate);
       }
       await expect(
@@ -119,13 +118,7 @@ it
         ),
       ).rejects.toThrow("Clean Linux runner retained a Hopper demo process");
       // Observation must not terminate the fixture, even though it resembles Xvfb.
-      const { stdout: alive } = await execFileAsync("ps", [
-        "-p",
-        String(pid),
-        "-o",
-        "stat=",
-      ]);
-      expect(alive.trim()).not.toMatch(/^Z/u);
+      expect(await readProcessState(pid)).not.toMatch(/^Z/u);
     } finally {
       if (orphanPid !== undefined) {
         const cleanup = await cleanupOwnedProcessGroup({
