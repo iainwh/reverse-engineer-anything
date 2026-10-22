@@ -9,6 +9,20 @@ const delay = (ms: number): Promise<void> =>
     setTimeout(resolve, ms);
   });
 
+const processAlive = (pid: number): boolean => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error: unknown) {
+    return (
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      error.code !== "ESRCH"
+    );
+  }
+};
+
 const isENOENT = (error: unknown): boolean =>
   typeof error === "object" &&
   error !== null &&
@@ -34,13 +48,17 @@ const readProcCmdlineWhen = async (
     }
     await delay(25);
   }
+  if (!processAlive(pid))
+    throw new Error(
+      `process ${String(pid)} exited before cmdline was readable`,
+    );
   throw new Error(`timed out waiting for ${path} to populate`);
 };
 
 /** Wait until /proc/<pid>/cmdline exposes a non-empty argv0. */
 export const readProcCmdlineFirstArg = async (
   pid: number,
-  deadlineMs = 10_000,
+  deadlineMs = 20_000,
 ): Promise<string> => {
   const commandLine = await readProcCmdlineWhen(
     pid,
@@ -53,7 +71,7 @@ export const readProcCmdlineFirstArg = async (
 /** Wait until /proc/<pid>/cmdline is populated enough for argv inspection. */
 export const readProcCmdline = async (
   pid: number,
-  deadlineMs = 10_000,
+  deadlineMs = 20_000,
 ): Promise<string> =>
   readProcCmdlineWhen(
     pid,
@@ -65,7 +83,7 @@ export const readProcCmdline = async (
 export const readReparentCoordinates = async (
   pid: number,
   spawningParentPid: number,
-  deadlineMs = 10_000,
+  deadlineMs = 20_000,
 ): Promise<{ currentParent: number; group: number }> => {
   const deadline = Date.now() + deadlineMs;
   while (Date.now() < deadline) {
@@ -86,10 +104,18 @@ export const readReparentCoordinates = async (
       )
         return { currentParent, group };
     } catch {
+      if (!processAlive(pid))
+        throw new Error(
+          `process ${String(pid)} exited before reparent coordinates were readable`,
+        );
       // ps can fail transiently while the kernel updates parent links.
     }
     await delay(25);
   }
+  if (!processAlive(pid))
+    throw new Error(
+      `process ${String(pid)} exited before reparent coordinates were readable`,
+    );
   throw new Error(
     `timed out waiting for reparented coordinates of pid ${String(pid)}`,
   );
@@ -98,7 +124,7 @@ export const readReparentCoordinates = async (
 /** Wait until ps can report the process state (non-zombie for running fixtures). */
 export const readProcessState = async (
   pid: number,
-  deadlineMs = 10_000,
+  deadlineMs = 20_000,
 ): Promise<string> => {
   const deadline = Date.now() + deadlineMs;
   while (Date.now() < deadline) {

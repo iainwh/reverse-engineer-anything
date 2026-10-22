@@ -16,7 +16,7 @@ import { expect, it } from "vitest";
 import { assertCleanLinuxHopperRuntime } from "../../scripts/lib/clean-linux-hopper-runtime.mjs";
 import { completeVerifierRun } from "../../scripts/lib/verifier-run.mjs";
 import { cleanupOwnedProcessGroup } from "../../src/process/ProcessOwnership.js";
-import { createTestTempDirectory } from "../fixtures/temporaryDirectory.js";
+import { createExecSafeTestTempDirectory } from "../fixtures/temporaryDirectory.js";
 import {
   readProcCmdlineFirstArg,
   readProcessState,
@@ -33,7 +33,9 @@ it
     const runId = randomUUID();
     const childCode =
       "process.title = 'Xvfb'; setInterval(() => {}, 1000); process.send('ready');";
-    const directory = await createTestTempDirectory("rea-clean-runtime-test-");
+    const directory = await createExecSafeTestTempDirectory(
+      "rea-clean-runtime-test-",
+    );
     const launcher = join(directory, "Hopper");
     const alternate = join(directory, "Hopper-alternate");
     const procRoot = join(directory, "proc");

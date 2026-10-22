@@ -16,7 +16,10 @@ import { expect, it } from "vitest";
 
 import { assertCleanLinuxHopperRuntime } from "../../../scripts/lib/clean-linux-hopper-runtime.mjs";
 import { cleanupOwnedProcessGroup } from "../../../src/process/ProcessOwnership.js";
-import { createTestTempDirectory } from "../../fixtures/temporaryDirectory.js";
+import {
+  createExecSafeTestTempDirectory,
+  createTestTempDirectory,
+} from "../../fixtures/temporaryDirectory.js";
 import {
   readProcCmdline,
   readProcCmdlineFirstArg,
@@ -34,7 +37,9 @@ it.runIf(process.platform === "linux").each([
 ] as const)(
   "observes an unreaped %s without signaling or reaping it",
   async (name, refusal) => {
-    const directory = await createTestTempDirectory("rea-runtime-zombie-");
+    const directory = await createExecSafeTestTempDirectory(
+      "rea-runtime-zombie-",
+    );
     const procRoot = join(directory, "proc");
     await mkdir(procRoot);
     const executable = join(directory, name);
@@ -278,7 +283,9 @@ it.runIf(process.platform === "linux").each([
     const runId = randomUUID();
     const childCode =
       "process.title = 'Xvfb'; setInterval(() => {}, 1000); process.send('ready');";
-    const directory = await createTestTempDirectory("rea-clean-runtime-test-");
+    const directory = await createExecSafeTestTempDirectory(
+      "rea-clean-runtime-test-",
+    );
     const procRoot = join(directory, "proc");
     await mkdir(procRoot);
     const launcher = join(directory, "Hopper");
